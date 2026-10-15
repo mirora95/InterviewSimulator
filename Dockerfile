@@ -5,7 +5,7 @@ WORKDIR /src
 # Copy and restore
 COPY *.sln .
 COPY InterviewSimulator.Api/*.csproj InterviewSimulator.Api/
-RUN dotnet restore
+RUN dotnet restore InterviewSimulator.Api/InterviewSimulator.Api.csproj
 
 # Build and publish
 COPY . .

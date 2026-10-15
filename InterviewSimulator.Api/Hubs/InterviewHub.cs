@@ -37,8 +37,10 @@ public class InterviewHub : Hub
     }
 
     // Client sends candidate answer
-    public async Task SubmitAnswer(string sessionId, string questionText, string answerText)
+    public async Task SubmitAnswer(string questionText, string answerText)
     {
+        var sessionId = Context.ConnectionId;
+
         // Immediately send "thinking" message
         await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "info", "Evaluating...", DateTime.UtcNow));
 
