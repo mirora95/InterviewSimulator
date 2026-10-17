@@ -19,7 +19,11 @@ const connection = new signalR.HubConnectionBuilder()
 connection.on("ReceiveMessage", msg => {
     const chat = document.getElementById("chat");
     const p = document.createElement("div");
-    p.innerHTML = `<b>${msg.from}</b> [${msg.type}]: ${msg.text}`;
+    const sender = document.createElement("b");
+    sender.textContent = msg.from;
+    p.appendChild(sender);
+    p.appendChild(document.createTextNode(` [${msg.type}]: ${msg.text}`));
+
     chat.appendChild(p);
     chat.scrollTop = chat.scrollHeight;
 
