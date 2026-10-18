@@ -24,31 +24,36 @@ class Element {
     appendChild(child) { this.children.push(child); }
 }
 
+function createClient() {
+    const elements = Object.fromEntries(['start', 'send', 'chat', 'answer'].map(id => [id, new Element('div')]));
+    const handlers = {};
+    const calls = [];
+    const connection = {
+        on: (name, handler) => { handlers[name] = handler; },
+        start: async () => {},
+        invoke: async (...args) => { calls.push(args); }
+    };
+    const builder = {
+        withUrl() { return this; },
+        withAutomaticReconnect() { return this; },
+        build() { return connection; }
+    };
+    vm.runInNewContext(source, {
+        document: {
+            getElementById: id => elements[id],
+            createElement: tag => new Element(tag),
+            createTextNode: text => String(text)
+        },
+        signalR: { HubConnectionBuilder: function () { return builder; } },
+        console: { log() {}, error() {} },
+        alert: message => assert.fail(message)
+    });
+    return { elements, handlers, calls, connection };
+}
+
 for (const type of ['question', 'evaluation', 'error', '<svg onload=alert(3)>']) {
     test(`renders ${type} fields literally and preserves the sender label`, async () => {
-        const elements = Object.fromEntries(['start', 'send', 'chat', 'answer'].map(id => [id, new Element('div')]));
-        const handlers = {};
-        const calls = [];
-        const connection = {
-            on: (name, handler) => { handlers[name] = handler; },
-            start: async () => {},
-            invoke: async (...args) => { calls.push(args); }
-        };
-        const builder = {
-            withUrl() { return this; },
-            withAutomaticReconnect() { return this; },
-            build() { return connection; }
-        };
-        vm.runInNewContext(source, {
-            document: {
-                getElementById: id => elements[id],
-                createElement: tag => new Element(tag),
-                createTextNode: text => String(text)
-            },
-            signalR: { HubConnectionBuilder: function () { return builder; } },
-            console: { log() {}, error() {} },
-            alert: message => assert.fail(message)
-        });
+        const { elements, handlers, calls } = createClient();
         const message = {
             from: '<img src=x onerror=alert(1)>',
             type,
@@ -64,7 +69,7 @@ for (const type of ['question', 'evaluation', 'error', '<svg onload=alert(3)>'])
         assert.equal(row.children.filter(child => typeof child !== 'string').length, 1);
 
         if (type === 'question') {
-            elements.answer.value = 'A contract.';
+            elements.answer.value = '  A contract.  ';
 
             await elements.send.onclick();
 
@@ -73,3 +78,31 @@ for (const type of ['question', 'evaluation', 'error', '<svg onload=alert(3)>'])
         }
     });
 }
+
+test('preserves answer edits made while submission is pending', async () => {
+    const { elements, handlers, calls, connection } = createClient();
+    let finishSubmission;
+    const pending = new Promise(resolve => { finishSubmission = resolve; });
+    connection.invoke = async (...args) => { calls.push(args); await pending; };
+    handlers.ReceiveMessage({ from: 'interviewer', type: 'question', text: 'What is an interface?' });
+    elements.answer.value = '  A contract.  ';
+
+    const submission = elements.send.onclick();
+    assert.deepEqual(calls[0], ['SubmitAnswer', 'What is an interface?', 'A contract.']);
+    elements.answer.value = 'A contract that defines members.';
+    finishSubmission();
+    await submission;
+
+    assert.equal(elements.answer.value, 'A contract that defines members.');
+});
+
+test('keeps the answer when submission fails', async () => {
+    const { elements, handlers, connection } = createClient();
+    connection.invoke = async () => { throw new Error('Connection lost'); };
+    handlers.ReceiveMessage({ from: 'interviewer', type: 'question', text: 'What is an interface?' });
+    elements.answer.value = 'A contract.';
+
+    await elements.send.onclick();
+
+    assert.equal(elements.answer.value, 'A contract.');
+});
