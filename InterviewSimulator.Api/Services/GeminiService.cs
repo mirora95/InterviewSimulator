@@ -85,12 +85,15 @@ Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity
         // Extract the text
         if (doc.RootElement.TryGetProperty("candidates", out var cands) && cands.GetArrayLength() > 0)
         {
-            // The generated text is nested under candidates[0].content.parts[0].text
             if (cands[0].TryGetProperty("content", out var content) &&
-                content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0 &&
-                parts[0].TryGetProperty("text", out var textElement))
+                content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
-                return textElement.GetString() ?? "";
+                // A candidate can contain multiple answer parts alongside thought or non-text parts.
+                var textParts = parts.EnumerateArray()
+                    .Where(part => !part.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True)
+                    .Where(part => part.TryGetProperty("text", out _))
+                    .Select(part => part.GetProperty("text").GetString());
+                return string.Concat(textParts);
             }
         }
 
