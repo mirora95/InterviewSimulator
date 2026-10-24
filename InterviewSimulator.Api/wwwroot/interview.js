@@ -68,7 +68,9 @@ startButton.onclick = async () => {
 
 // Handle "Submit Answer" button
 sendButton.onclick = async () => {
-    const answer = document.getElementById("answer").value.trim();
+    const answerInput = document.getElementById("answer");
+    const submittedValue = answerInput.value;
+    const answer = submittedValue.trim();
     if (!answer) {
         alert("Please enter your answer.");
         return;
@@ -81,7 +83,9 @@ sendButton.onclick = async () => {
     try {
         console.log("Submitting answer:", answer, "for question:", lastQuestionText);
         await connection.invoke("SubmitAnswer", lastQuestionText, answer);
-        document.getElementById("answer").value = "";
+        if (answerInput.value === submittedValue) {
+            answerInput.value = "";
+        }
     } catch (err) {
         console.error("Error submitting answer:", err);
     }
