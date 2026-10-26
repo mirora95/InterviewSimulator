@@ -9,6 +9,22 @@ namespace InterviewSimulator.Tests;
 public class GeminiServiceTests
 {
     [Theory]
+    [InlineData(null, "https://generativelanguage.googleapis.com/v1beta/models/test:generateContent?key=test-only")]
+    [InlineData("https://example.test/custom", "https://example.test/custom/models/test:generateContent?key=test-only")]
+    public async Task GenerateQuestion_UsesDefaultOrConfiguredEndpoint(string? baseUrl, string expectedUrl)
+    {
+        var handler = new ResponseHandler("""{"candidates":[{"content":{"parts":[{"text":"One question"}]}}]}""");
+        using var client = new HttpClient(handler);
+        var options = new GeminiOptions { ApiKey = "test-only", Model = "models/test" };
+        if (baseUrl is not null) options.BaseUrl = baseUrl;
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(options));
+
+        await service.GenerateQuestionAsync("C# developer", "Junior", "test-session");
+
+        Assert.Equal(expectedUrl, handler.RequestUri?.AbsoluteUri);
+    }
+
+    [Theory]
     [InlineData("[{\"text\":\"One question\"}]", "One question")]
     [InlineData("[{\"text\":\"Explain \"},{\"text\":\"interfaces.\"}]", "Explain interfaces.")]
     [InlineData("[{\"thoughtSignature\":\"opaque\"},{\"text\":\"The answer\"}]", "The answer")]
@@ -39,10 +55,15 @@ public class GeminiServiceTests
 
     private sealed class ResponseHandler(string response) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        public Uri? RequestUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(response, Encoding.UTF8, "application/json")
             });
+        }
     }
 }
