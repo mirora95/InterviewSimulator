@@ -24,7 +24,7 @@ class Element {
     appendChild(child) { this.children.push(child); }
 }
 
-function createClient() {
+async function createClient() {
     const elements = Object.fromEntries(['start', 'send', 'chat', 'answer'].map(id => [id, new Element('div')]));
     const handlers = {};
     const calls = [];
@@ -48,12 +48,14 @@ function createClient() {
         console: { log() {}, error() {} },
         alert: message => assert.fail(message)
     });
+    // Let the completed SignalR startup enable controls before interactions.
+    await Promise.resolve();
     return { elements, handlers, calls, connection };
 }
 
 for (const type of ['question', 'evaluation', 'error', '<svg onload=alert(3)>']) {
     test(`renders ${type} fields literally and preserves the sender label`, async () => {
-        const { elements, handlers, calls } = createClient();
+        const { elements, handlers, calls } = await createClient();
         const message = {
             from: '<img src=x onerror=alert(1)>',
             type,
@@ -80,7 +82,7 @@ for (const type of ['question', 'evaluation', 'error', '<svg onload=alert(3)>'])
 }
 
 test('preserves answer edits made while submission is pending', async () => {
-    const { elements, handlers, calls, connection } = createClient();
+    const { elements, handlers, calls, connection } = await createClient();
     let finishSubmission;
     const pending = new Promise(resolve => { finishSubmission = resolve; });
     connection.invoke = async (...args) => { calls.push(args); await pending; };
@@ -96,13 +98,44 @@ test('preserves answer edits made while submission is pending', async () => {
     assert.equal(elements.answer.value, 'A contract that defines members.');
 });
 
-test('keeps the answer when submission fails', async () => {
-    const { elements, handlers, connection } = createClient();
-    connection.invoke = async () => { throw new Error('Connection lost'); };
+test('keeps the answer and allows retry when submission fails', async () => {
+    const { elements, handlers, calls, connection } = await createClient();
+    connection.invoke = async (...args) => {
+        calls.push(args);
+        if (calls.length === 1) throw new Error('Connection lost');
+    };
     handlers.ReceiveMessage({ from: 'interviewer', type: 'question', text: 'What is an interface?' });
     elements.answer.value = 'A contract.';
 
     await elements.send.onclick();
 
     assert.equal(elements.answer.value, 'A contract.');
+    assert.equal(elements.send.disabled, false);
+
+    await elements.send.onclick();
+
+    assert.equal(calls.length, 2);
+    assert.equal(elements.answer.value, '');
+    assert.equal(elements.send.disabled, false);
+});
+
+test('ignores repeated answer submissions while evaluation is pending', async () => {
+    const { elements, handlers, calls, connection } = await createClient();
+    let finishSubmission;
+    const pending = new Promise(resolve => { finishSubmission = resolve; });
+    connection.invoke = async (...args) => { calls.push(args); await pending; };
+    handlers.ReceiveMessage({ from: 'interviewer', type: 'question', text: 'What is an interface?' });
+    elements.answer.value = 'A contract.';
+
+    const firstSubmission = elements.send.onclick();
+    const disabledWhilePending = elements.send.disabled;
+    const secondSubmission = elements.send.onclick();
+    const pendingCallCount = calls.length;
+    finishSubmission();
+    await Promise.all([firstSubmission, secondSubmission]);
+
+    assert.equal(pendingCallCount, 1);
+    assert.equal(disabledWhilePending, true);
+    assert.equal(elements.send.disabled, false);
+    assert.deepEqual(calls[0], ['SubmitAnswer', 'What is an interface?', 'A contract.']);
 });

@@ -68,6 +68,8 @@ startButton.onclick = async () => {
 
 // Handle "Submit Answer" button
 sendButton.onclick = async () => {
+    if (sendButton.disabled) return;
+
     const answerInput = document.getElementById("answer");
     const submittedValue = answerInput.value;
     const answer = submittedValue.trim();
@@ -80,6 +82,7 @@ sendButton.onclick = async () => {
         return;
     }
 
+    sendButton.disabled = true;
     try {
         console.log("Submitting answer:", answer, "for question:", lastQuestionText);
         await connection.invoke("SubmitAnswer", lastQuestionText, answer);
@@ -88,5 +91,7 @@ sendButton.onclick = async () => {
         }
     } catch (err) {
         console.error("Error submitting answer:", err);
+    } finally {
+        sendButton.disabled = false;
     }
 };
