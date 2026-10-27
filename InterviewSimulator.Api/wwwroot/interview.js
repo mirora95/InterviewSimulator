@@ -46,6 +46,8 @@ connection.start()
 
 // Handle "Start Interview" button
 startButton.onclick = async () => {
+    if (startButton.disabled) return;
+
     if (connection.state !== signalR.HubConnectionState.Connected) {
         alert("Connection is not ready yet. Please wait.");
         return;
@@ -58,11 +60,16 @@ startButton.onclick = async () => {
     document.getElementById("chat").innerHTML = "";
     lastQuestionText = "";
 
+    startButton.disabled = true;
+    sendButton.disabled = true;
     try {
         console.log("Invoking StartInterview with role:", role, "level:", level);
         await connection.invoke("StartInterview", role, level);
     } catch (err) {
         console.error("Error starting interview:", err);
+    } finally {
+        startButton.disabled = false;
+        sendButton.disabled = false;
     }
 };
 
@@ -82,6 +89,7 @@ sendButton.onclick = async () => {
         return;
     }
 
+    startButton.disabled = true;
     sendButton.disabled = true;
     try {
         console.log("Submitting answer:", answer, "for question:", lastQuestionText);
@@ -92,6 +100,7 @@ sendButton.onclick = async () => {
     } catch (err) {
         console.error("Error submitting answer:", err);
     } finally {
+        startButton.disabled = false;
         sendButton.disabled = false;
     }
 };
