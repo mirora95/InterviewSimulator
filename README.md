@@ -52,7 +52,7 @@ User (Browser) → Frontend (HTML/CSS/JS) → ASP.NET Web API → SignalR Hub �
 - Responses are sent back to the user instantly.  
 - The whole system is **containerized with Docker** and deployed on **Google Cloud Run** for scalability and reliability.
 
-## Run locally (PowerShell)
+## 🛠️ Run locally (PowerShell)
 
 Install the .NET 8 SDK (or a newer SDK with the .NET 8 ASP.NET Core runtime), then run these commands from the repository root. The first build needs NuGet access.
 
