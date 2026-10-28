@@ -51,4 +51,24 @@ User (Browser) → Frontend (HTML/CSS/JS) → ASP.NET Web API → SignalR Hub �
 - **Gemini API** generates AI interview questions and evaluates answers.  
 - Responses are sent back to the user instantly.  
 - The whole system is **containerized with Docker** and deployed on **Google Cloud Run** for scalability and reliability.
+
+## Run locally (PowerShell)
+
+Install the .NET 8 SDK (or a newer SDK with the .NET 8 ASP.NET Core runtime), then run these commands from the repository root. The first build needs NuGet access.
+
+```powershell
+$env:Gemini__ApiKey = "<your Gemini API key>"
+$env:DOTNET_ENVIRONMENT = "Production"
+dotnet run --project InterviewSimulator.Api --no-launch-profile --artifacts-path ../InterviewSimulator-artifacts
+```
+
+Replace the key placeholder locally; do not commit a real key to `appsettings.json`. `Gemini__ApiKey` overrides the nested `Gemini:ApiKey` setting. The default model and endpoint come from `InterviewSimulator.Api/appsettings.json`. The standalone `GeminiApiKey` setting is not used by the service.
+
+Open **http://localhost:8080/** for the interview page. **http://localhost:8080/api-status** should return `AI Interview Simulator API is running.` without calling Gemini. Select a role and level, click **Start Interview**, then submit an answer. Generating questions and feedback requires a valid key, access to the configured model, and internet access; loading the page alone does not validate the key.
+
+`Program.cs` binds to `http://0.0.0.0:8080`, including all network interfaces, even though the launch profiles list other ports. Keep the server on a trusted local network and stop it with **Ctrl+C** when finished. The command skips those launch profiles and uses `Production` to avoid the development HTTPS redirect; Swagger is only enabled in `Development`. Build outputs go outside the checkout to `../InterviewSimulator-artifacts`.
+
+No database is configured in the current startup code; PostgreSQL and Cloud Run are not prerequisites for this local flow.
+
+See Microsoft's references for [environment-variable configuration](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/?view=aspnetcore-8.0#environment-variables) and [`dotnet run` options](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-run).
   
