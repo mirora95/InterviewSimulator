@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using InterviewSimulator.Api.Services;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -8,6 +9,34 @@ namespace InterviewSimulator.Tests;
 
 public class GeminiServiceTests
 {
+    [Theory]
+    [InlineData("\"\"", "")]
+    [InlineData("  \"\" \n", "")]
+    [InlineData("\"Can you explain \\\"async\\\"?\\nExample?\"", "Can you explain \"async\"?\nExample?")]
+    [InlineData("\"\\u4f60\\u597d\"", "你好")]
+    [InlineData("null", "")]
+    [InlineData("Can you explain?", "Can you explain?")]
+    [InlineData("", "")]
+    [InlineData("{\"text\":\"Raw object\"}", "{\"text\":\"Raw object\"}")]
+    public async Task GenerateFollowUp_DecodesJsonStringsAndPreservesOtherResponses(string followUp, string expected)
+    {
+        var response = JsonSerializer.Serialize(new
+        {
+            candidates = new[] { new { content = new { parts = new[] { new { text = followUp } } } } }
+        });
+        using var client = new HttpClient(new ResponseHandler(response));
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+
+        var actual = await service.GenerateFollowUpAsync("What is an interface?", "A contract.", "test-session");
+
+        Assert.Equal(expected, actual);
+    }
+
     [Theory]
     [InlineData(null, "https://generativelanguage.googleapis.com/v1beta/models/test:generateContent?key=test-only")]
     [InlineData("https://example.test/custom", "https://example.test/custom/models/test:generateContent?key=test-only")]

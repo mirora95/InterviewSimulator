@@ -33,7 +33,17 @@ Respond only with JSON: {{ ""type"": ""question"", ""text"": ""..."" }}";
         var prompt = $@"Given question: {question}
 Candidate answer: {answer}
 If a clarifying or follow-up question would help, produce it. Otherwise output an empty string.";
-        return await CallGeminiAsync(prompt);
+        var response = await CallGeminiAsync(prompt);
+
+        try
+        {
+            // JSON mode can encode an absent follow-up as "" instead of an empty response.
+            return JsonSerializer.Deserialize<string>(response) ?? string.Empty;
+        }
+        catch (JsonException)
+        {
+            return response;
+        }
     }
 
     public async Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId)
