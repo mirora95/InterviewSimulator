@@ -77,6 +77,32 @@ public class GeminiServiceTests
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("""{"promptFeedback":{"blockReason":"SAFETY"}}""")]
+    [InlineData("""{"candidates":[],"promptFeedback":{"blockReason":"OTHER"}}""")]
+    [InlineData("""{"candidates":[{"finishReason":"SAFETY"}]}""")]
+    [InlineData("""{"candidates":[{"content":{}}]}""")]
+    [InlineData("""{"candidates":[{"content":{"parts":[]}}]}""")]
+    [InlineData("{}")]
+    public async Task Generation_RejectsResponsesWithoutCandidateContent(string response)
+    {
+        using var client = new HttpClient(new ResponseHandler(response));
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+
+        var questionError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateQuestionAsync("C# developer", "Junior", "test-session"));
+        var evaluationError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.EvaluateAnswerAsync("Question", "Answer", "test-session"));
+        var followUpError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateFollowUpAsync("Question", "Answer", "test-session"));
+
+        Assert.Equal("Gemini returned no response content.", questionError.Message);
+        Assert.Equal(questionError.Message, evaluationError.Message);
+        Assert.Equal(questionError.Message, followUpError.Message);
+    }
+
     private sealed class TestClientFactory(HttpClient client) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => client;
