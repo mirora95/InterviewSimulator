@@ -107,6 +107,6 @@ Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity
             }
         }
 
-        return await resp.Content.ReadAsStringAsync();
+        throw new InvalidOperationException("Gemini returned no response content.");
     }
 }
