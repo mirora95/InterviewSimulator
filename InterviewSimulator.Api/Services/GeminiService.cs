@@ -81,7 +81,7 @@ Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity
             }
         };
 
-        var resp = await client.PostAsJsonAsync(url, body);
+        using var resp = await client.PostAsJsonAsync(url, body);
 
         if (!resp.IsSuccessStatusCode)
         {

@@ -103,22 +103,63 @@ public class GeminiServiceTests
         Assert.Equal(questionError.Message, followUpError.Message);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.OK, """{"candidates":[{"content":{"parts":[{"text":"One question"}]}}]}""", null)]
+    [InlineData(HttpStatusCode.BadRequest, "Bad request", typeof(Exception))]
+    [InlineData(HttpStatusCode.OK, "{", typeof(JsonException))]
+    [InlineData(HttpStatusCode.OK, "{}", typeof(InvalidOperationException))]
+    public async Task Generation_DisposesResponseContentOnEveryExit(HttpStatusCode status, string body, Type? errorType)
+    {
+        var handler = new ResponseHandler(body, status);
+        using var client = new HttpClient(handler);
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+
+        try
+        {
+            if (errorType is null)
+            {
+                Assert.Equal("One question", await service.GenerateQuestionAsync("C# developer", "Junior", "test-session"));
+            }
+            else
+            {
+                var error = await Record.ExceptionAsync(() => service.GenerateQuestionAsync("C# developer", "Junior", "test-session"));
+                Assert.IsAssignableFrom(errorType, error);
+                if (status == HttpStatusCode.BadRequest)
+                    Assert.Equal("Gemini API error: BadRequest - Bad request", error.Message);
+            }
+
+            Assert.NotNull(handler.Response);
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => handler.Response.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            handler.Response?.Dispose();
+        }
+    }
+
     private sealed class TestClientFactory(HttpClient client) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => client;
     }
 
-    private sealed class ResponseHandler(string response) : HttpMessageHandler
+    private sealed class ResponseHandler(string response, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }
+        public HttpResponseMessage? Response { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            Response = new HttpResponseMessage(status)
             {
                 Content = new StringContent(response, Encoding.UTF8, "application/json")
-            });
+            };
+            return Task.FromResult(Response);
         }
     }
 }
