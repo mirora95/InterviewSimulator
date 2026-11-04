@@ -77,19 +77,19 @@ public class InterviewHubTests
         public (string Question, string Answer, string SessionId)? Evaluation { get; private set; }
         public (string Question, string Answer, string SessionId)? FollowUp { get; private set; }
 
-        public Task<string> GenerateQuestionAsync(string role, string level, string sessionId)
+        public Task<string> GenerateQuestionAsync(string role, string level, string sessionId, CancellationToken cancellationToken = default)
         {
             StartSessionId = sessionId;
             return Task.FromResult("What is an interface?");
         }
 
-        public Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId)
+        public Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
         {
             Evaluation = (question, answer, sessionId);
             return Task.FromResult("Good answer.");
         }
 
-        public Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId)
+        public Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
         {
             FollowUp = (question, answer, sessionId);
             return Task.FromResult(followUp);
