@@ -33,11 +33,20 @@ public class InterviewHub : Hub
         }
         catch (Exception ex)
         {
-            // Send error message to caller for debugging
-            await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "error", ex.Message, DateTime.UtcNow));
-
             // Log the full exception on server
             Console.WriteLine(ex.ToString());
+
+            var cancellationToken = Context.ConnectionAborted;
+            if (cancellationToken.IsCancellationRequested) return;
+
+            try
+            {
+                await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "error", ex.Message, DateTime.UtcNow), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The caller disconnected while the error reply was being sent.
+            }
         }
     }
 
