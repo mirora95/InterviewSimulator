@@ -20,45 +20,67 @@ public class InterviewHub : Hub
         try
         {
             var sessionId = Context.ConnectionId;
+            var cancellationToken = Context.ConnectionAborted;
 
-            var question = await _gemini.GenerateQuestionAsync(role, level, sessionId);
+            var question = await _gemini.GenerateQuestionAsync(role, level, sessionId, cancellationToken);
            
             var msg = new InterviewMessage("interviewer", "question", question, DateTime.UtcNow);
-            await Clients.Caller.SendAsync("ReceiveMessage", msg);
+            await Clients.Caller.SendAsync("ReceiveMessage", msg, cancellationToken);
+        }
+        catch (OperationCanceledException) when (Context.ConnectionAborted.IsCancellationRequested)
+        {
+            // The caller has disconnected; no reply is possible.
         }
         catch (Exception ex)
         {
-            // Send error message to caller for debugging
-            await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "error", ex.Message, DateTime.UtcNow));
-
             // Log the full exception on server
             Console.WriteLine(ex.ToString());
+
+            var cancellationToken = Context.ConnectionAborted;
+            if (cancellationToken.IsCancellationRequested) return;
+
+            try
+            {
+                await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "error", ex.Message, DateTime.UtcNow), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The caller disconnected while the error reply was being sent.
+            }
         }
     }
 
     // Client sends candidate answer
     public async Task SubmitAnswer(string questionText, string answerText)
     {
-        var sessionId = Context.ConnectionId;
-
-        // Immediately send "thinking" message
-        await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "info", "Evaluating...", DateTime.UtcNow));
-
-        // Ask Gemini to evaluate
-        var evaluation = await _gemini.EvaluateAnswerAsync(questionText, answerText, sessionId);
-
-        // Send evaluation back
-        var evalMsg = new InterviewMessage("interviewer", "evaluation", evaluation, DateTime.UtcNow);
-        await Clients.Caller.SendAsync("ReceiveMessage", evalMsg);
-
-        // Optionally ask a follow-up question
-        var followUp = await _gemini.GenerateFollowUpAsync(questionText, answerText, sessionId);
-        if (!string.IsNullOrEmpty(followUp))
+        try
         {
-            var qMsg = new InterviewMessage("interviewer", "question", followUp, DateTime.UtcNow);
-            await Clients.Caller.SendAsync("ReceiveMessage", qMsg);
-        }
+            var sessionId = Context.ConnectionId;
+            var cancellationToken = Context.ConnectionAborted;
 
-        // Persist transcript & scores to DB as needed
+            // Immediately send "thinking" message
+            await Clients.Caller.SendAsync("ReceiveMessage", new InterviewMessage("system", "info", "Evaluating...", DateTime.UtcNow), cancellationToken);
+
+            // Ask Gemini to evaluate
+            var evaluation = await _gemini.EvaluateAnswerAsync(questionText, answerText, sessionId, cancellationToken);
+
+            // Send evaluation back
+            var evalMsg = new InterviewMessage("interviewer", "evaluation", evaluation, DateTime.UtcNow);
+            await Clients.Caller.SendAsync("ReceiveMessage", evalMsg, cancellationToken);
+
+            // Optionally ask a follow-up question
+            var followUp = await _gemini.GenerateFollowUpAsync(questionText, answerText, sessionId, cancellationToken);
+            if (!string.IsNullOrEmpty(followUp))
+            {
+                var qMsg = new InterviewMessage("interviewer", "question", followUp, DateTime.UtcNow);
+                await Clients.Caller.SendAsync("ReceiveMessage", qMsg, cancellationToken);
+            }
+
+            // Persist transcript & scores to DB as needed
+        }
+        catch (OperationCanceledException) when (Context.ConnectionAborted.IsCancellationRequested)
+        {
+            // The caller has disconnected; no reply is possible.
+        }
     }
 }

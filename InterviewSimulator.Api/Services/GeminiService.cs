@@ -20,20 +20,20 @@ public class GeminiService : IGeminiService
         return c;
     }
 
-    public async Task<string> GenerateQuestionAsync(string role, string level, string sessionId)
+    public async Task<string> GenerateQuestionAsync(string role, string level, string sessionId, CancellationToken cancellationToken = default)
     {
         var prompt = $@"You are an expert interviewer for role: {role}, level: {level}.
 Generate one concise technical interview question and include tags and difficulty.
 Respond only with JSON: {{ ""type"": ""question"", ""text"": ""..."" }}";
-        return await CallGeminiAsync(prompt);
+        return await CallGeminiAsync(prompt, cancellationToken);
     }
 
-    public async Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId)
+    public async Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
     {
         var prompt = $@"Given question: {question}
 Candidate answer: {answer}
 If a clarifying or follow-up question would help, produce it. Otherwise output an empty string.";
-        var response = await CallGeminiAsync(prompt);
+        var response = await CallGeminiAsync(prompt, cancellationToken);
 
         try
         {
@@ -46,7 +46,7 @@ If a clarifying or follow-up question would help, produce it. Otherwise output a
         }
     }
 
-    public async Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId)
+    public async Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
     {
         var prompt = $@"Evaluate the candidate answer to this question.
 Question: {question}
@@ -54,10 +54,10 @@ Answer: {answer}
 
 Use the rubric: correctness 0-5, clarity 0-3, depth 0-2, bestPractices 0-2.
 Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity"":Y,""depth"":Z,""bestPractices"":W}},""total"":N,""feedback"":""..."" }}";
-        return await CallGeminiAsync(prompt);
+        return await CallGeminiAsync(prompt, cancellationToken);
     }
 
-    private async Task<string> CallGeminiAsync(string prompt)
+    private async Task<string> CallGeminiAsync(string prompt, CancellationToken cancellationToken)
     {
         var client = CreateClient();
 
@@ -81,16 +81,16 @@ Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity
             }
         };
 
-        using var resp = await client.PostAsJsonAsync(url, body);
+        using var resp = await client.PostAsJsonAsync(url, body, cancellationToken);
 
         if (!resp.IsSuccessStatusCode)
         {
-            var err = await resp.Content.ReadAsStringAsync();
+            var err = await resp.Content.ReadAsStringAsync(cancellationToken);
             throw new Exception($"Gemini API error: {resp.StatusCode} - {err}");
         }
 
-        using var stream = await resp.Content.ReadAsStreamAsync();
-        using var doc = await JsonDocument.ParseAsync(stream);
+        using var stream = await resp.Content.ReadAsStreamAsync(cancellationToken);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
         // Extract the text
         if (doc.RootElement.TryGetProperty("candidates", out var cands) && cands.GetArrayLength() > 0)
