@@ -46,6 +46,8 @@ connection.start()
 
 // Handle "Start Interview" button
 startButton.onclick = async () => {
+    if (startButton.disabled) return;
+
     if (connection.state !== signalR.HubConnectionState.Connected) {
         alert("Connection is not ready yet. Please wait.");
         return;
@@ -58,17 +60,26 @@ startButton.onclick = async () => {
     document.getElementById("chat").innerHTML = "";
     lastQuestionText = "";
 
+    startButton.disabled = true;
+    sendButton.disabled = true;
     try {
         console.log("Invoking StartInterview with role:", role, "level:", level);
         await connection.invoke("StartInterview", role, level);
     } catch (err) {
         console.error("Error starting interview:", err);
+    } finally {
+        startButton.disabled = false;
+        sendButton.disabled = false;
     }
 };
 
 // Handle "Submit Answer" button
 sendButton.onclick = async () => {
-    const answer = document.getElementById("answer").value.trim();
+    if (sendButton.disabled) return;
+
+    const answerInput = document.getElementById("answer");
+    const submittedValue = answerInput.value;
+    const answer = submittedValue.trim();
     if (!answer) {
         alert("Please enter your answer.");
         return;
@@ -78,11 +89,18 @@ sendButton.onclick = async () => {
         return;
     }
 
+    startButton.disabled = true;
+    sendButton.disabled = true;
     try {
         console.log("Submitting answer:", answer, "for question:", lastQuestionText);
         await connection.invoke("SubmitAnswer", lastQuestionText, answer);
-        document.getElementById("answer").value = "";
+        if (answerInput.value === submittedValue) {
+            answerInput.value = "";
+        }
     } catch (err) {
         console.error("Error submitting answer:", err);
+    } finally {
+        startButton.disabled = false;
+        sendButton.disabled = false;
     }
 };
