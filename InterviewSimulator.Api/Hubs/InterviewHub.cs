@@ -23,6 +23,8 @@ public class InterviewHub : Hub
             var cancellationToken = Context.ConnectionAborted;
 
             var question = await _gemini.GenerateQuestionAsync(role, level, sessionId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(question))
+                throw new InvalidOperationException("No interview question was generated. Please try starting again.");
            
             var msg = new InterviewMessage("interviewer", "question", question, DateTime.UtcNow);
             await Clients.Caller.SendAsync("ReceiveMessage", msg, cancellationToken);
