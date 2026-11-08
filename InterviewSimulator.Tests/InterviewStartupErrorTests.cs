@@ -10,6 +10,44 @@ namespace InterviewSimulator.Tests;
 
 public class InterviewStartupErrorTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t\r\n")]
+    [InlineData("\u00a0\u2003")]
+    public async Task EmptyInitialQuestion_ReportsRecoverableError_AndAllowsRetry(string? question)
+    {
+        using var disconnected = new CancellationTokenSource();
+        var messages = new List<InterviewMessage>();
+        var caller = new CallerProxy((method, args, token) =>
+        {
+            Assert.Equal("ReceiveMessage", method);
+            Assert.Equal(disconnected.Token, token);
+            messages.Add(Assert.IsType<InterviewMessage>(Assert.Single(args)));
+            return Task.CompletedTask;
+        });
+        var questions = new Queue<string?>([question, "What is an interface?"]);
+        var hub = new InterviewHub(new QuestionGemini(questions))
+        {
+            Context = new CallerContext(disconnected),
+            Clients = new CallerClients(caller)
+        };
+
+        await hub.StartInterview("Developer", "Junior");
+
+        var error = Assert.Single(messages);
+        Assert.Equal("system", error.From);
+        Assert.Equal("error", error.Type);
+        Assert.Equal("No interview question was generated. Please try starting again.", error.Text);
+
+        await hub.StartInterview("Developer", "Junior");
+
+        Assert.Equal(2, caller.SendCount);
+        Assert.Equal("interviewer", messages[1].From);
+        Assert.Equal("question", messages[1].Type);
+        Assert.Equal("What is an interface?", messages[1].Text);
+    }
+
     [Fact]
     public async Task FailureAfterDisconnect_DoesNotSendAnError()
     {
@@ -61,6 +99,13 @@ public class InterviewStartupErrorTests
             beforeFailure();
             return Task.FromException<string>(new InvalidOperationException("Gemini failed"));
         }
+        public Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class QuestionGemini(Queue<string?> questions) : IGeminiService
+    {
+        public Task<string> GenerateQuestionAsync(string role, string level, string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(questions.Dequeue()!);
         public Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
