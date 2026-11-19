@@ -142,6 +142,57 @@ public class GeminiServiceTests
         }
     }
 
+    [Theory]
+    [InlineData("\"MAX_TOKENS\"")]
+    [InlineData("\"SAFETY\"")]
+    [InlineData("\"RECITATION\"")]
+    [InlineData("\"FUTURE_REASON\"")]
+    [InlineData("\"\"")]
+    [InlineData("null")]
+    [InlineData("42")]
+    public async Task Generation_RejectsUnfinishedCandidateEvenWhenItHasText(string finishReasonJson)
+    {
+        var response = """{"candidates":[{"finishReason":""" + finishReasonJson
+            + """, "content":{"parts":[{"text":"Explain the difference between"}]}}]}""";
+        var handler = new ResponseHandler(response);
+        using var client = new HttpClient(handler);
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+
+        var questionError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateQuestionAsync("Developer", "Junior", "test-session"));
+        var evaluationError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.EvaluateAnswerAsync("Question", "Answer", "test-session"));
+        var followUpError = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateFollowUpAsync("Question", "Answer", "test-session"));
+
+        Assert.Equal("Gemini did not complete the response. Please try again.", questionError.Message);
+        Assert.Equal(questionError.Message, evaluationError.Message);
+        Assert.Equal(questionError.Message, followUpError.Message);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => handler.Response!.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("STOP", "\"\"", "")]
+    [InlineData("STOP", "\"Can you explain?\"", "Can you explain?")]
+    public async Task FollowUp_PreservesCompletedResponses(string finishReason, string text, string expected)
+    {
+        var response = JsonSerializer.Serialize(new
+        {
+            candidates = new[] { new { finishReason, content = new { parts = new[] { new { text } } } } }
+        });
+        using var client = new HttpClient(new ResponseHandler(response));
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+
+        Assert.Equal(expected, await service.GenerateFollowUpAsync("Question", "Answer", "test-session"));
+    }
+
     private sealed class TestClientFactory(HttpClient client) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => client;

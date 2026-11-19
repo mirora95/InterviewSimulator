@@ -98,6 +98,11 @@ Return JSON: {{ ""type"":""evaluation"",""scores"":{{""correctness"":X,""clarity
             if (cands[0].TryGetProperty("content", out var content) &&
                 content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
+                // Older compatible responses may omit finishReason.
+                if (cands[0].TryGetProperty("finishReason", out var finishReason) &&
+                    (finishReason.ValueKind != JsonValueKind.String || finishReason.GetString() != "STOP"))
+                    throw new InvalidOperationException("Gemini did not complete the response. Please try again.");
+
                 // A candidate can contain multiple answer parts alongside thought or non-text parts.
                 var textParts = parts.EnumerateArray()
                     .Where(part => !part.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True)

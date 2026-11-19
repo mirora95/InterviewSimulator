@@ -68,6 +68,8 @@ Open **http://localhost:8080/** for the interview page. **http://localhost:8080/
 
 `Program.cs` binds to `http://0.0.0.0:8080`, including all network interfaces, even though the launch profiles list other ports. Keep the server on a trusted local network and stop it with **Ctrl+C** when finished. The command skips those launch profiles and uses `Production` to avoid the development HTTPS redirect; Swagger is only enabled in `Development`. Build outputs go outside the checkout to `../InterviewSimulator-artifacts`.
 
+Question, evaluation and follow-up generation reject a candidate with an explicit non-`STOP` finish reason (for example, `MAX_TOKENS`) instead of treating its text as a completed response. Startup reports a retryable error; no automatic provider retry is made. Responses that omit the optional field remain compatible, and a completed empty follow-up still means no follow-up question. See the [Gemini candidate completion contract](https://aistudio.google.com/api-reference/generate-content#Resource:Candidate).
+
 No database is configured in the current startup code; PostgreSQL and Cloud Run are not prerequisites for this local flow.
 
 See Microsoft's references for [environment-variable configuration](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/?view=aspnetcore-8.0#environment-variables) and [`dotnet run` options](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-run).
