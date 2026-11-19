@@ -22,12 +22,29 @@ The app is containerized with **Docker** and deployed to **Google Cloud Run** fo
 
 | Layer | Technology |
 |-------|-------------|
-| **Frontend** | Blazor Web App (.NET 8) |
+| **Frontend** | HTML/CSS/JavaScript served from `InterviewSimulator.Api/wwwroot` |
 | **Backend** | ASP.NET Core + SignalR |
 | **AI Engine** | Google Gemini API |
 | **Architecture** | Clean Architecture (Domain, Application, Infrastructure, UI) |
 | **Deployment** | Docker + Google Cloud Run |
 | **Database (optional)** | PostgreSQL |
+
+---
+
+## Regression tests
+
+Run these commands from the repository root with Node.js 24 and the .NET 8 SDK installed. A newer .NET SDK can also build the tests, but the .NET 8 runtime is still needed to run them.
+
+```sh
+node --test InterviewSimulator.Tests/interview.test.cjs
+dotnet test InterviewSimulator.sln --configuration Release --artifacts-path .artifacts
+```
+
+The client tests use Node's built-in test runner and execute the real browser script with mocked DOM and SignalR APIs; no npm install is needed. The .NET tests build the solution and use in-process test services and fake Gemini responses. They do not require an API key, PostgreSQL, or a Cloud Run account. The first .NET package restore requires access to NuGet.
+
+Build output is isolated in `.artifacts/` so the test command does not rewrite checked-in `bin/` and `obj/` files. The `Regression tests` workflow in `.github/workflows/tests.yml` runs both suites for pull requests and pushes to `main`.
+
+These checks do not exercise a live browser, a deployed application, or real Gemini requests.
 
 ---
 
