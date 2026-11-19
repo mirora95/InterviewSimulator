@@ -1,3 +1,6 @@
+using System.Net;
+using System.Text;
+using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using InterviewSimulator.Api.Hubs;
 using InterviewSimulator.Api.Models;
@@ -49,6 +52,48 @@ public class InterviewStartupErrorTests
     }
 
     [Fact]
+    public async Task TokenLimitedQuestion_ReportsErrorInsteadOfQuestion_AndAllowsCompletedRetry()
+    {
+        var responses = new Queue<string>([
+            """{"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"Explain the difference between"}]}}]}""",
+            """{"candidates":[{"finishReason":"STOP","content":{"parts":[{"thought":true,"text":"Hidden thought"},{"text":"What is "},{"text":"an interface?"}]}}]}"""
+        ]);
+        using var client = new HttpClient(new SequenceHandler(responses));
+        var service = new GeminiService(new TestClientFactory(client), Options.Create(new GeminiOptions
+        {
+            ApiKey = "test-only",
+            BaseUrl = "https://example.test/v1beta",
+            Model = "models/test"
+        }));
+        using var disconnected = new CancellationTokenSource();
+        var messages = new List<InterviewMessage>();
+        var caller = new CallerProxy((method, args, token) =>
+        {
+            Assert.Equal("ReceiveMessage", method);
+            messages.Add(Assert.IsType<InterviewMessage>(Assert.Single(args)));
+            return Task.CompletedTask;
+        });
+        var hub = new InterviewHub(service)
+        {
+            Context = new CallerContext(disconnected),
+            Clients = new CallerClients(caller)
+        };
+
+        await hub.StartInterview("Developer", "Junior");
+
+        var error = Assert.Single(messages);
+        Assert.Equal("error", error.Type);
+        Assert.Equal("Gemini did not complete the response. Please try again.", error.Text);
+
+        await hub.StartInterview("Developer", "Junior");
+
+        Assert.Equal(2, messages.Count);
+        Assert.Equal("question", messages[1].Type);
+        Assert.Equal("What is an interface?", messages[1].Text);
+        Assert.Empty(responses);
+    }
+
+    [Fact]
     public async Task FailureAfterDisconnect_DoesNotSendAnError()
     {
         using var disconnected = new CancellationTokenSource();
@@ -91,6 +136,20 @@ public class InterviewStartupErrorTests
         Context = new CallerContext(disconnected),
         Clients = new CallerClients(caller)
     };
+
+    private sealed class TestClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class SequenceHandler(Queue<string> responses) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responses.Dequeue(), Encoding.UTF8, "application/json")
+            });
+    }
 
     private sealed class FailingGemini(Action beforeFailure) : IGeminiService
     {
