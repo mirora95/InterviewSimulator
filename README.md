@@ -70,6 +70,8 @@ Open **http://localhost:8080/** for the interview page. **http://localhost:8080/
 
 Question, evaluation and follow-up generation reject a candidate with an explicit non-`STOP` finish reason (for example, `MAX_TOKENS`) instead of treating its text as a completed response. Startup reports a retryable error; no automatic provider retry is made. Responses that omit the optional field remain compatible, and a completed empty follow-up still means no follow-up question. See the [Gemini candidate completion contract](https://aistudio.google.com/api-reference/generate-content#Resource:Candidate).
 
+If answer processing fails, the chat shows a generic error and keeps the typed answer. Check any feedback already received before retrying; a follow-up can fail after the evaluation has arrived. No automatic retry is made.
+
 No database is configured in the current startup code; PostgreSQL and Cloud Run are not prerequisites for this local flow.
 
 See Microsoft's references for [environment-variable configuration](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/?view=aspnetcore-8.0#environment-variables) and [`dotnet run` options](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-run).
