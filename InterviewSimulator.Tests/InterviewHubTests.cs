@@ -20,24 +20,8 @@ public class InterviewHubTests
     public async Task SubmitAnswer_AcceptsBrowserArgumentsAndUsesCurrentConnection(string followUp)
     {
         var gemini = new RecordingGeminiService(followUp);
-        using var server = new TestServer(new WebHostBuilder()
-            .ConfigureServices(services =>
-            {
-                services.AddSignalR(options => options.EnableDetailedErrors = true);
-                services.AddSingleton<IGeminiService>(gemini);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints => endpoints.MapHub<InterviewHub>("/hubs/interview"));
-            }));
-        await using var connection = new HubConnectionBuilder()
-            .WithUrl("http://localhost/hubs/interview", options =>
-            {
-                options.Transports = HttpTransportType.LongPolling;
-                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
-            })
-            .Build();
+        using var server = CreateServer(gemini);
+        await using var connection = CreateConnection(server);
         var messages = Channel.CreateUnbounded<InterviewMessage>();
         connection.On<InterviewMessage>("ReceiveMessage", message => { messages.Writer.TryWrite(message); });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -71,8 +55,64 @@ public class InterviewHubTests
         Assert.False(messages.Reader.TryRead(out _));
     }
 
-    private sealed class RecordingGeminiService(string followUp) : IGeminiService
+    [Theory]
+    [InlineData("evaluation")]
+    [InlineData("follow-up")]
+    public async Task SubmitAnswer_ProviderFailureRejectsInvocationAndAllowsRetry(string failureStage)
     {
+        using var server = CreateServer(new RecordingGeminiService("", failureStage));
+        await using var connection = CreateConnection(server);
+        var messages = Channel.CreateUnbounded<InterviewMessage>();
+        connection.On<InterviewMessage>("ReceiveMessage", message => { messages.Writer.TryWrite(message); });
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await connection.StartAsync(timeout.Token);
+        await connection.InvokeAsync("StartInterview", "Developer", "Junior", timeout.Token);
+
+        var error = await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(() =>
+            connection.InvokeAsync("SubmitAnswer", "What is an interface?", "A contract.", timeout.Token));
+
+        Assert.DoesNotContain("Synthetic provider detail", error.Message);
+        Assert.Equal(HubConnectionState.Connected, connection.State);
+        var expected = new List<string> { "question", "info" };
+        if (failureStage == "follow-up") expected.Add("evaluation");
+        foreach (var type in expected)
+        {
+            var message = await messages.Reader.ReadAsync(timeout.Token);
+            Assert.Equal(type, message.Type);
+        }
+        Assert.False(messages.Reader.TryRead(out _));
+
+        await connection.InvokeAsync("SubmitAnswer", "What is an interface?", "A contract.", timeout.Token);
+
+        Assert.Equal("info", (await messages.Reader.ReadAsync(timeout.Token)).Type);
+        Assert.Equal("evaluation", (await messages.Reader.ReadAsync(timeout.Token)).Type);
+        Assert.False(messages.Reader.TryRead(out _));
+    }
+
+    private static TestServer CreateServer(IGeminiService gemini) => new(new WebHostBuilder()
+        .ConfigureServices(services =>
+        {
+            services.AddSignalR();
+            services.AddSingleton(gemini);
+        })
+        .Configure(app =>
+        {
+            app.UseRouting();
+            app.UseEndpoints(endpoints => endpoints.MapHub<InterviewHub>("/hubs/interview"));
+        }));
+
+    private static HubConnection CreateConnection(TestServer server) => new HubConnectionBuilder()
+        .WithUrl("http://localhost/hubs/interview", options =>
+        {
+            options.Transports = HttpTransportType.LongPolling;
+            options.HttpMessageHandlerFactory = _ => server.CreateHandler();
+        })
+        .Build();
+
+    private sealed class RecordingGeminiService(string followUp, string? failureStage = null) : IGeminiService
+    {
+        private bool _failed;
+
         public string? StartSessionId { get; private set; }
         public (string Question, string Answer, string SessionId)? Evaluation { get; private set; }
         public (string Question, string Answer, string SessionId)? FollowUp { get; private set; }
@@ -86,12 +126,22 @@ public class InterviewHubTests
         public Task<string> EvaluateAnswerAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
         {
             Evaluation = (question, answer, sessionId);
+            if (!_failed && failureStage == "evaluation")
+            {
+                _failed = true;
+                throw new InvalidOperationException("Synthetic provider detail");
+            }
             return Task.FromResult("Good answer.");
         }
 
         public Task<string> GenerateFollowUpAsync(string question, string answer, string sessionId, CancellationToken cancellationToken = default)
         {
             FollowUp = (question, answer, sessionId);
+            if (!_failed && failureStage == "follow-up")
+            {
+                _failed = true;
+                throw new InvalidOperationException("Synthetic provider detail");
+            }
             return Task.FromResult(followUp);
         }
     }

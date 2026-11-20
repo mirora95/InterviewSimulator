@@ -15,8 +15,7 @@ const connection = new signalR.HubConnectionBuilder()
     .withAutomaticReconnect()
     .build();
 
-// Listen for messages from server
-connection.on("ReceiveMessage", msg => {
+function displayMessage(msg) {
     const chat = document.getElementById("chat");
     const p = document.createElement("div");
     const sender = document.createElement("b");
@@ -24,6 +23,7 @@ connection.on("ReceiveMessage", msg => {
     p.appendChild(sender);
     p.appendChild(document.createTextNode(` [${msg.type}]: ${msg.text}`));
 
+    if (msg.type === "error") p.setAttribute("role", "alert");
     chat.appendChild(p);
     chat.scrollTop = chat.scrollHeight;
 
@@ -33,7 +33,10 @@ connection.on("ReceiveMessage", msg => {
     if (msg.type === "question") {
         lastQuestionText = msg.text;
     }
-});
+}
+
+// Listen for messages from server
+connection.on("ReceiveMessage", displayMessage);
 
 // Start the SignalR connection
 connection.start()
@@ -84,5 +87,6 @@ sendButton.onclick = async () => {
         document.getElementById("answer").value = "";
     } catch (err) {
         console.error("Error submitting answer:", err);
+        displayMessage({ from: "system", type: "error", text: "We couldn't finish processing your answer. Your text is kept. Check any feedback above before trying again." });
     }
 };
